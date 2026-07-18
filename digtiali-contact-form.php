@@ -4,15 +4,43 @@
  * Description: Custom contact form with admin submissions and reply handling.
  * Version: 1.0.0
  * Author: Digtiali
+ * Text Domain: digtiali-contact-form
+ * Requires PHP: 7.4
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! defined( 'DIGTIALI_CONTACT_FORM_VERSION' ) ) {
-	define( 'DIGTIALI_CONTACT_FORM_VERSION', '1.0.0' );
+define( 'DIGTIALI_CONTACT_FORM_PATH', plugin_dir_path( __FILE__ ) );
+define( 'DIGTIALI_CONTACT_FORM_URL', plugin_dir_url( __FILE__ ) );
+
+/**
+ * Installed version — read from version.json when present.
+ */
+function digtiali_contact_form_read_installed_version(): string {
+	$fallback = '1.0.0'; // digtiali-contact-form version fallback
+	$path     = __DIR__ . '/version.json';
+	if ( ! is_readable( $path ) ) {
+		return $fallback;
+	}
+	$data = json_decode( (string) file_get_contents( $path ), true );
+	if ( ! is_array( $data ) || empty( $data['version'] ) ) {
+		return $fallback;
+	}
+	return (string) $data['version'];
 }
+
+if ( ! defined( 'DIGTIALI_CONTACT_FORM_VERSION' ) ) {
+	define( 'DIGTIALI_CONTACT_FORM_VERSION', digtiali_contact_form_read_installed_version() );
+}
+
+require_once DIGTIALI_CONTACT_FORM_PATH . 'includes/plugin-updater.php';
+
+/** Load plugin translations. Source language is Arabic; en_US.mo provides English. */
+add_action( 'init', static function () {
+	load_plugin_textdomain( 'digtiali-contact-form', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+} );
 
 function digtiali_contact_form_init_plugin(): void {
 	static $booted = false;
@@ -77,44 +105,44 @@ function digtiali_contact_register_cpt_and_statuses(): void {
 	register_post_status(
 		'unread',
 		array(
-			'label'                     => _x( 'Unread', 'post status', 'digtiali-fse' ),
+			'label'                     => _x( 'Unread', 'post status', 'digtiali-contact-form' ),
 			'public'                    => false,
 			'internal'                  => true,
 			'exclude_from_search'       => true,
 			'show_in_admin_all_list'    => true,
 			'show_in_admin_status_list' => true,
-			'label_count'               => _n_noop( 'Unread <span class="count">(%s)</span>', 'Unread <span class="count">(%s)</span>', 'digtiali-fse' ),
+			'label_count'               => _n_noop( 'Unread <span class="count">(%s)</span>', 'Unread <span class="count">(%s)</span>', 'digtiali-contact-form' ),
 		)
 	);
 	register_post_status(
 		'read',
 		array(
-			'label'                     => _x( 'Read', 'post status', 'digtiali-fse' ),
+			'label'                     => _x( 'Read', 'post status', 'digtiali-contact-form' ),
 			'public'                    => false,
 			'internal'                  => true,
 			'exclude_from_search'       => true,
 			'show_in_admin_all_list'    => true,
 			'show_in_admin_status_list' => true,
-			'label_count'               => _n_noop( 'Read <span class="count">(%s)</span>', 'Read <span class="count">(%s)</span>', 'digtiali-fse' ),
+			'label_count'               => _n_noop( 'Read <span class="count">(%s)</span>', 'Read <span class="count">(%s)</span>', 'digtiali-contact-form' ),
 		)
 	);
 	register_post_status(
 		'replied',
 		array(
-			'label'                     => _x( 'Replied', 'post status', 'digtiali-fse' ),
+			'label'                     => _x( 'Replied', 'post status', 'digtiali-contact-form' ),
 			'public'                    => false,
 			'internal'                  => true,
 			'exclude_from_search'       => true,
 			'show_in_admin_all_list'    => true,
 			'show_in_admin_status_list' => true,
-			'label_count'               => _n_noop( 'Replied <span class="count">(%s)</span>', 'Replied <span class="count">(%s)</span>', 'digtiali-fse' ),
+			'label_count'               => _n_noop( 'Replied <span class="count">(%s)</span>', 'Replied <span class="count">(%s)</span>', 'digtiali-contact-form' ),
 		)
 	);
 
 	register_post_type(
 		'contact_submission',
 		array(
-			'label'              => __( 'Contact Submissions', 'digtiali-fse' ),
+			'label'              => __( 'Contact Submissions', 'digtiali-contact-form' ),
 			'public'             => false,
 			'show_ui'            => false,
 			'show_in_menu'       => false,
@@ -145,7 +173,7 @@ function digtiali_contact_normalize_phone( string $phone ): string {
 }
 
 function digtiali_contact_get_status_label( string $status ): string {
-	$labels = array( 'unread' => __( 'Unread', 'digtiali-fse' ), 'read' => __( 'Read', 'digtiali-fse' ), 'replied' => __( 'Replied', 'digtiali-fse' ) );
+	$labels = array( 'unread' => __( 'Unread', 'digtiali-contact-form' ), 'read' => __( 'Read', 'digtiali-contact-form' ), 'replied' => __( 'Replied', 'digtiali-contact-form' ) );
 	return $labels[ $status ] ?? $status;
 }
 
@@ -173,16 +201,16 @@ function digtiali_contact_get_submission_meta( int $post_id ): array {
 
 function digtiali_contact_admin_menu(): void {
 	$counts = digtiali_contact_get_counts();
-	$label  = __( 'Contact Submissions', 'digtiali-fse' );
+	$label  = __( 'Contact Submissions', 'digtiali-contact-form' );
 	if ( ! empty( $counts['unread'] ) ) {
 		$label .= ' <span class="update-plugins count-' . absint( $counts['unread'] ) . '"><span class="plugin-count">' . absint( $counts['unread'] ) . '</span></span>';
 	}
-	add_menu_page( __( 'Contact Submissions', 'digtiali-fse' ), $label, 'manage_options', 'digtiali-contact-submissions', 'digtiali_contact_render_admin_page', 'dashicons-email-alt', 26 );
+	add_menu_page( __( 'Contact Submissions', 'digtiali-contact-form' ), $label, 'manage_options', 'digtiali-contact-submissions', 'digtiali_contact_render_admin_page', 'dashicons-email-alt', 26 );
 }
 
 function digtiali_contact_render_admin_page(): void {
 	if ( ! digtiali_contact_user_can_manage() ) {
-		wp_die( esc_html__( 'You do not have permission to access this page.', 'digtiali-fse' ) );
+		wp_die( esc_html__( 'You do not have permission to access this page.', 'digtiali-contact-form' ) );
 	}
 	$view    = isset( $_GET['view'] ) ? sanitize_key( wp_unslash( $_GET['view'] ) ) : 'list'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	$post_id = isset( $_GET['submission_id'] ) ? absint( $_GET['submission_id'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -193,14 +221,14 @@ function digtiali_contact_render_admin_page(): void {
 		echo '</div>';
 		return;
 	}
-	echo '<div class="wrap"><h1>' . esc_html__( 'Contact Submissions', 'digtiali-fse' ) . '</h1>';
+	echo '<div class="wrap"><h1>' . esc_html__( 'Contact Submissions', 'digtiali-contact-form' ) . '</h1>';
 	digtiali_contact_render_list_view( $status );
 	echo '</div>';
 }
 
 function digtiali_contact_render_list_view( string $status ): void {
 	$counts = digtiali_contact_get_counts();
-	$tabs   = array( 'all' => __( 'All', 'digtiali-fse' ), 'unread' => __( 'Unread', 'digtiali-fse' ), 'read' => __( 'Read', 'digtiali-fse' ), 'replied' => __( 'Replied', 'digtiali-fse' ) );
+	$tabs   = array( 'all' => __( 'All', 'digtiali-contact-form' ), 'unread' => __( 'Unread', 'digtiali-contact-form' ), 'read' => __( 'Read', 'digtiali-contact-form' ), 'replied' => __( 'Replied', 'digtiali-contact-form' ) );
 	$base   = admin_url( 'admin.php?page=digtiali-contact-submissions' );
 	echo '<h2 class="nav-tab-wrapper">';
 	foreach ( $tabs as $key => $label ) {
@@ -228,7 +256,7 @@ function digtiali_contact_render_list_view( string $status ): void {
 	}
 	$q = new WP_Query( $args );
 	echo '<style>.dcs-wrap{direction:rtl;font-family:"Almarai",system-ui,sans-serif;background:#f5f3f8;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(120,27,175,.08);margin:20px 0}.dcs-tbl{background:#fff;border:1px solid rgba(120,27,175,.1);width:100%;border-collapse:collapse}.dcs-tbl th{background:linear-gradient(135deg,#faf9fb 0%,#f5f3f8 100%);color:#1a1a1a;font-weight:800;padding:16px 18px;font-size:.9rem;border-bottom:2px solid rgba(120,27,175,.15);letter-spacing:.02em}.dcs-tbl td{padding:14px 18px;font-size:.86rem;border-bottom:1px solid rgba(120,27,175,.05);color:#2a2038}.dcs-tbl tbody tr{transition:all .15s}.dcs-tbl tbody tr:hover{background:#faf9fb;border-color:rgba(120,27,175,.1)}.dcs-tbl a{color:#781baf;text-decoration:none;font-weight:600;transition:color .15s}.dcs-tbl a:hover{color:#5a1280;text-decoration:underline}.dcs-stat{color:rgba(42,32,56,.55);font-size:.82rem}.dcs-stat strong{color:#1a1a1a;font-weight:700}.dcs-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:8px;font-size:.76rem;font-weight:700;letter-spacing:.01em}.dcs-badge-unread{background:rgba(234,179,8,.15);color:#a16207;border:1px solid rgba(234,179,8,.2)}.dcs-badge-read{background:rgba(59,130,246,.15);color:#1e40af;border:1px solid rgba(59,130,246,.2)}.dcs-badge-replied{background:rgba(34,197,94,.15);color:#15803d;border:1px solid rgba(34,197,94,.2)}.dcs-pg{display:flex;justify-content:center;align-items:center;gap:6px;margin:24px 0;font-size:.85rem;padding:0 20px}.dcs-pg a,.dcs-pg span{padding:8px 13px;border-radius:8px;text-decoration:none;transition:all .15s}.dcs-pg a{background:#f0e4f8;color:#781baf;border:1px solid rgba(120,27,175,.15)}.dcs-pg a:hover{background:#f4edf8;color:#5a1280;border-color:rgba(120,27,175,.3)}.dcs-pg .page-numbers.current{background:linear-gradient(135deg,#781baf,#9b2dd4);color:#fff;font-weight:700;border:1px solid #781baf}</style>';
-	echo '<div class="dcs-wrap"><table class="dcs-tbl widefat"><thead><tr><th>' . esc_html__( 'Name', 'digtiali-fse' ) . '</th><th>' . esc_html__( 'Email', 'digtiali-fse' ) . '</th><th>' . esc_html__( 'Phone', 'digtiali-fse' ) . '</th><th>' . esc_html__( 'Subject', 'digtiali-fse' ) . '</th><th>' . esc_html__( 'Date', 'digtiali-fse' ) . '</th><th>' . esc_html__( 'Status', 'digtiali-fse' ) . '</th></tr></thead><tbody>';
+	echo '<div class="dcs-wrap"><table class="dcs-tbl widefat"><thead><tr><th>' . esc_html__( 'Name', 'digtiali-contact-form' ) . '</th><th>' . esc_html__( 'Email', 'digtiali-contact-form' ) . '</th><th>' . esc_html__( 'Phone', 'digtiali-contact-form' ) . '</th><th>' . esc_html__( 'Subject', 'digtiali-contact-form' ) . '</th><th>' . esc_html__( 'Date', 'digtiali-contact-form' ) . '</th><th>' . esc_html__( 'Status', 'digtiali-contact-form' ) . '</th></tr></thead><tbody>';
 	if ( $q->have_posts() ) {
 		foreach ( $q->posts as $post ) {
 			$meta = digtiali_contact_get_submission_meta( $post->ID );
@@ -237,7 +265,7 @@ function digtiali_contact_render_list_view( string $status ): void {
 			echo '<tr><td><a href="' . esc_url( $link ) . '"><strong>' . esc_html( get_the_title( $post ) ) . '</strong></a></td><td><span class="dcs-stat">' . esc_html( $meta['email'] ) . '</span></td><td><span class="dcs-stat">' . esc_html( $meta['phone'] ) . '</span></td><td>' . esc_html( $meta['subject'] ) . '</td><td><span class="dcs-stat">' . esc_html( get_the_date( 'Y-m-d H:i', $post ) ) . '</span></td><td><span class="dcs-badge dcs-badge-' . esc_attr( $post->post_status ) . '">' . esc_html( $status_label ) . '</span></td></tr>';
 		}
 	} else {
-		echo '<tr><td colspan="6" style="text-align:center;padding:30px">' . esc_html__( 'No submissions found.', 'digtiali-fse' ) . '</td></tr>';
+		echo '<tr><td colspan="6" style="text-align:center;padding:30px">' . esc_html__( 'No submissions found.', 'digtiali-contact-form' ) . '</td></tr>';
 	}
 	echo '</tbody></table></div>';
 	if ( $q->max_num_pages > 1 ) {
@@ -254,7 +282,7 @@ function digtiali_contact_render_list_view( string $status ): void {
 function digtiali_contact_render_detail_view( int $post_id ): void {
 	$post = get_post( $post_id );
 	if ( ! $post || 'contact_submission' !== $post->post_type ) {
-		echo '<div class="notice notice-error"><p>' . esc_html__( 'Submission not found.', 'digtiali-fse' ) . '</p></div>';
+		echo '<div class="notice notice-error"><p>' . esc_html__( 'Submission not found.', 'digtiali-contact-form' ) . '</p></div>';
 		return;
 	}
 	if ( 'unread' === $post->post_status ) {
@@ -266,7 +294,11 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 	$back_url    = admin_url( 'admin.php?page=digtiali-contact-submissions' );
 	$wa_link     = 'https://wa.me/' . preg_replace( '/\D+/', '', $meta['phone'] );
 	$date        = get_the_date( 'Y-m-d H:i', $post );
-	$status_map  = array( 'unread' => array( 'غير مقروء', 'unread' ), 'read' => array( 'مقروء', 'read' ), 'replied' => array( 'تم الرد', 'replied' ) );
+	$status_map  = array(
+		'unread'   => array( esc_html__( 'غير مقروء', 'digtiali-contact-form' ), 'unread' ),
+		'read'     => array( esc_html__( 'مقروء', 'digtiali-contact-form' ), 'read' ),
+		'replied'  => array( esc_html__( 'تم الرد', 'digtiali-contact-form' ), 'replied' ),
+	);
 	$status_cfg  = $status_map[ $status ] ?? array( $status, 'read' );
 	?>
 	<style>
@@ -306,7 +338,7 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 		<div class="das-hd">
 			<a href="<?php echo esc_url( $back_url ); ?>" class="das-back">
 				<span class="material-symbols-outlined">arrow_forward</span>
-				<?php esc_html_e( 'العودة إلى القائمة', 'digtiali-fse' ); ?>
+				<?php esc_html_e( 'العودة إلى القائمة', 'digtiali-contact-form' ); ?>
 			</a>
 			<span class="dbadge dbadge-<?php echo esc_attr( $status_cfg[1] ); ?>"><?php echo esc_html( $status_cfg[0] ); ?></span>
 		</div>
@@ -315,25 +347,25 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 			<!-- Sender info -->
 			<div>
 				<div class="dab">
-					<div class="dab-hd"><span class="material-symbols-outlined">person</span><?php esc_html_e( 'معلومات المرسل', 'digtiali-fse' ); ?></div>
-					<div class="dir"><span><?php esc_html_e( 'الاسم', 'digtiali-fse' ); ?></span><strong><?php echo esc_html( get_the_title( $post ) ); ?></strong></div>
+					<div class="dab-hd"><span class="material-symbols-outlined">person</span><?php esc_html_e( 'معلومات المرسل', 'digtiali-contact-form' ); ?></div>
+					<div class="dir"><span><?php esc_html_e( 'الاسم', 'digtiali-contact-form' ); ?></span><strong><?php echo esc_html( get_the_title( $post ) ); ?></strong></div>
 					<?php if ( $meta['email'] ) : ?>
-					<div class="dir"><span><?php esc_html_e( 'البريد', 'digtiali-fse' ); ?></span><a href="mailto:<?php echo esc_attr( $meta['email'] ); ?>"><?php echo esc_html( $meta['email'] ); ?></a></div>
+					<div class="dir"><span><?php esc_html_e( 'البريد', 'digtiali-contact-form' ); ?></span><a href="mailto:<?php echo esc_attr( $meta['email'] ); ?>"><?php echo esc_html( $meta['email'] ); ?></a></div>
 					<?php endif; ?>
 					<?php if ( $meta['phone'] ) : ?>
-					<div class="dir"><span><?php esc_html_e( 'الهاتف', 'digtiali-fse' ); ?></span><a href="tel:<?php echo esc_attr( $meta['phone'] ); ?>"><?php echo esc_html( $meta['phone'] ); ?></a></div>
+					<div class="dir"><span><?php esc_html_e( 'الهاتف', 'digtiali-contact-form' ); ?></span><a href="tel:<?php echo esc_attr( $meta['phone'] ); ?>"><?php echo esc_html( $meta['phone'] ); ?></a></div>
 					<?php endif; ?>
 					<?php if ( $meta['subject'] ) : ?>
-					<div class="dir"><span><?php esc_html_e( 'الموضوع', 'digtiali-fse' ); ?></span><span><?php echo esc_html( $meta['subject'] ); ?></span></div>
+					<div class="dir"><span><?php esc_html_e( 'الموضوع', 'digtiali-contact-form' ); ?></span><span><?php echo esc_html( $meta['subject'] ); ?></span></div>
 					<?php endif; ?>
 					<?php if ( $meta['ip'] ) : ?>
 					<div class="dir"><span>IP</span><code><?php echo esc_html( $meta['ip'] ); ?></code></div>
 					<?php endif; ?>
-					<div class="dir"><span><?php esc_html_e( 'التاريخ', 'digtiali-fse' ); ?></span><span style="font-size:.8rem;color:rgba(42,32,56,.6)"><?php echo esc_html( $date ); ?></span></div>
+					<div class="dir"><span><?php esc_html_e( 'التاريخ', 'digtiali-contact-form' ); ?></span><span style="font-size:.8rem;color:rgba(42,32,56,.6)"><?php echo esc_html( $date ); ?></span></div>
 					<?php if ( $meta['phone'] ) : ?>
 					<a href="<?php echo esc_url( $wa_link ); ?>" class="dbtn dbtn-w" target="_blank" rel="noopener">
 						<span class="material-symbols-outlined" style="font-size:1rem">chat</span>
-						<?php esc_html_e( 'فتح واتساب', 'digtiali-fse' ); ?>
+						<?php esc_html_e( 'فتح واتساب', 'digtiali-contact-form' ); ?>
 					</a>
 					<?php endif; ?>
 				</div>
@@ -342,7 +374,7 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 			<!-- Message + Reply -->
 			<div>
 				<div class="dab">
-					<div class="dab-hd"><span class="material-symbols-outlined">mail</span><?php esc_html_e( 'الرسالة', 'digtiali-fse' ); ?></div>
+					<div class="dab-hd"><span class="material-symbols-outlined">mail</span><?php esc_html_e( 'الرسالة', 'digtiali-contact-form' ); ?></div>
 					<div class="dmb"><?php echo esc_html( $meta['message'] ); ?></div>
 				</div>
 
@@ -350,7 +382,7 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 				<div class="dab" style="border-color:rgba(34,197,94,.18)">
 					<div class="dab-hd">
 						<span class="material-symbols-outlined" style="color:#4ade80">check_circle</span>
-						<?php esc_html_e( 'الرد السابق', 'digtiali-fse' ); ?>
+						<?php esc_html_e( 'الرد السابق', 'digtiali-contact-form' ); ?>
 						<?php if ( $meta['replied_at'] ) : ?>
 						<span style="font-weight:400;font-size:.76rem;color:rgba(244,237,248,.4);margin-right:auto"><?php echo esc_html( gmdate( 'Y-m-d H:i', $meta['replied_at'] ) ); ?></span>
 						<?php endif; ?>
@@ -360,11 +392,11 @@ function digtiali_contact_render_detail_view( int $post_id ): void {
 				<?php endif; ?>
 
 				<div class="dab">
-					<div class="dab-hd"><span class="material-symbols-outlined">edit_note</span><?php esc_html_e( 'إرسال رد جديد', 'digtiali-fse' ); ?></div>
-					<textarea id="digi-contact-reply" class="das-ta" rows="6" placeholder="<?php esc_attr_e( 'اكتب ردك هنا...', 'digtiali-fse' ); ?>"></textarea>
+					<div class="dab-hd"><span class="material-symbols-outlined">edit_note</span><?php esc_html_e( 'إرسال رد جديد', 'digtiali-contact-form' ); ?></div>
+					<textarea id="digi-contact-reply" class="das-ta" rows="6" placeholder="<?php esc_attr_e( 'اكتب ردك هنا...', 'digtiali-contact-form' ); ?>"></textarea>
 					<button class="dbtn dbtn-p" id="digi-contact-reply-btn" type="button">
 						<span class="material-symbols-outlined" style="font-size:1rem">send</span>
-						<?php esc_html_e( 'إرسال الرد', 'digtiali-fse' ); ?>
+						<?php esc_html_e( 'إرسال الرد', 'digtiali-contact-form' ); ?>
 					</button>
 				</div>
 			</div>
@@ -671,12 +703,49 @@ function digtiali_contact_inline_footer_assets(): void {
 	if ( ! ( $post instanceof WP_Post ) || ! has_shortcode( (string) $post->post_content, 'digtiali_contact_form' ) ) {
 		return;
 	}
-	$iti_base = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8';
-	$only     = wp_json_encode( array( 'sa','ae','eg','tr','sy','iq','jo','kw','qa','bh','om','lb','ma','dz','tn','ly','ye','ps','de','se','dk','at','nl','gb','fr','us','be','no' ) );
-	$local    = wp_json_encode( array( 'sa'=>'السعودية','eg'=>'مصر','sy'=>'سوريا','iq'=>'العراق','jo'=>'الأردن','kw'=>'الكويت','ae'=>'الإمارات','qa'=>'قطر','bh'=>'البحرين','om'=>'عُمان','lb'=>'لبنان','ma'=>'المغرب','dz'=>'الجزائر','tn'=>'تونس','ly'=>'ليبيا','ye'=>'اليمن','ps'=>'فلسطين','de'=>'ألمانيا','se'=>'السويد','dk'=>'الدنمارك','at'=>'النمسا','nl'=>'هولندا','gb'=>'بريطانيا','fr'=>'فرنسا','us'=>'أمريكا','be'=>'بلجيكا','no'=>'النرويج','tr'=>'تركيا' ), JSON_UNESCAPED_UNICODE );
+	$iti_base    = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8';
+	$only        = wp_json_encode( array( 'sa','ae','eg','tr','sy','iq','jo','kw','qa','bh','om','lb','ma','dz','tn','ly','ye','ps','de','se','dk','at','nl','gb','fr','us','be','no' ) );
+	$local       = wp_json_encode( array(
+		'sa' => __( 'السعودية', 'digtiali-contact-form' ),
+		'eg' => __( 'مصر', 'digtiali-contact-form' ),
+		'sy' => __( 'سوريا', 'digtiali-contact-form' ),
+		'iq' => __( 'العراق', 'digtiali-contact-form' ),
+		'jo' => __( 'الأردن', 'digtiali-contact-form' ),
+		'kw' => __( 'الكويت', 'digtiali-contact-form' ),
+		'ae' => __( 'الإمارات', 'digtiali-contact-form' ),
+		'qa' => __( 'قطر', 'digtiali-contact-form' ),
+		'bh' => __( 'البحرين', 'digtiali-contact-form' ),
+		'om' => __( 'عُمان', 'digtiali-contact-form' ),
+		'lb' => __( 'لبنان', 'digtiali-contact-form' ),
+		'ma' => __( 'المغرب', 'digtiali-contact-form' ),
+		'dz' => __( 'الجزائر', 'digtiali-contact-form' ),
+		'tn' => __( 'تونس', 'digtiali-contact-form' ),
+		'ly' => __( 'ليبيا', 'digtiali-contact-form' ),
+		'ye' => __( 'اليمن', 'digtiali-contact-form' ),
+		'ps' => __( 'فلسطين', 'digtiali-contact-form' ),
+		'de' => __( 'ألمانيا', 'digtiali-contact-form' ),
+		'se' => __( 'السويد', 'digtiali-contact-form' ),
+		'dk' => __( 'الدنمارك', 'digtiali-contact-form' ),
+		'at' => __( 'النمسا', 'digtiali-contact-form' ),
+		'nl' => __( 'هولندا', 'digtiali-contact-form' ),
+		'gb' => __( 'بريطانيا', 'digtiali-contact-form' ),
+		'fr' => __( 'فرنسا', 'digtiali-contact-form' ),
+		'us' => __( 'أمريكا', 'digtiali-contact-form' ),
+		'be' => __( 'بلجيكا', 'digtiali-contact-form' ),
+		'no' => __( 'النرويج', 'digtiali-contact-form' ),
+		'tr' => __( 'تركيا', 'digtiali-contact-form' ),
+	), JSON_UNESCAPED_UNICODE );
+	$js_i18n     = wp_json_encode( array(
+		'successLong'   => __( 'تم إرسال رسالتك بنجاح، سنرد عليك قريباً', 'digtiali-contact-form' ),
+		'successShort'  => __( 'تم إرسال رسالتك بنجاح', 'digtiali-contact-form' ),
+		'searchCountry' => __( 'بحث عن دولة...', 'digtiali-contact-form' ),
+		'dupBlocked'    => __( 'تم منع الإرسال المكرر.', 'digtiali-contact-form' ),
+		'submitFailed'  => __( 'فشل الإرسال.', 'digtiali-contact-form' ),
+	), JSON_UNESCAPED_UNICODE );
 	?>
 	<script src="<?php echo esc_url( $iti_base . '/js/intlTelInput.min.js' ); ?>"></script>
 	<script>
+	window.DigiContactI18n=<?php echo $js_i18n; ?>;
 	(function(){
 		function showToast(message,type){
 			var toast=document.querySelector('.digtiali-contact-form__toast');
@@ -703,18 +772,18 @@ function digtiali_contact_inline_footer_assets(): void {
 				.then(function(r){return r.json().then(function(d){return{status:r.status,data:d};});})
 				.then(function(res){
 					if(btn)btn.disabled=false;
-					if(res.status===409){showToast((res.data&&res.data.data&&res.data.data.message)||"Duplicate submission blocked.","error");return;}
+					if(res.status===409){showToast((res.data&&res.data.data&&res.data.data.message)||window.DigiContactI18n.dupBlocked,"error");return;}
 					if(res.data&&res.data.success){
 						var wrap=form.querySelector('.dcp-fields-wrap');
 						var successEl=form.querySelector('.digi-contact-form__success');
 						if(wrap)wrap.style.display='none';
-						if(successEl){successEl.removeAttribute('hidden');successEl.style.display='';successEl.textContent=(res.data.data&&res.data.data.message)||'تم إرسال رسالتك بنجاح، سنرد عليك قريباً';}
-						showToast((res.data.data&&res.data.data.message)||'تم إرسال رسالتك بنجاح','success');
+						if(successEl){successEl.removeAttribute('hidden');successEl.style.display='';successEl.textContent=(res.data.data&&res.data.data.message)||window.DigiContactI18n.successLong;}
+						showToast((res.data.data&&res.data.data.message)||window.DigiContactI18n.successShort,'success');
 						return;
 					}
-					showToast((res.data&&res.data.data&&res.data.data.message)||'Submission failed.','error');
+					showToast((res.data&&res.data.data&&res.data.data.message)||window.DigiContactI18n.submitFailed,'error');
 				})
-				.catch(function(){if(btn)btn.disabled=false;showToast('Submission failed.','error');});
+				.catch(function(){if(btn)btn.disabled=false;showToast(window.DigiContactI18n.submitFailed,'error');});
 		}
 		function initIti(phone){
 			if(!phone||phone.dataset.itiDone||typeof window.intlTelInput!=="function")return null;
@@ -746,7 +815,7 @@ function digtiali_contact_inline_footer_assets(): void {
 				var inp=document.createElement('input');
 				inp.type='text';
 				inp.className='dcp-iti-search';
-				inp.placeholder='بحث عن دولة...';
+				inp.placeholder=window.DigiContactI18n.searchCountry;
 				inp.setAttribute('dir','rtl');
 				li.appendChild(inp);
 				list.insertBefore(li,list.firstChild);
@@ -808,14 +877,14 @@ function digtiali_contact_form_shortcode(): string {
 		<div class="dcp-hero">
 			<div class="dcp-hero__tag">
 				<span class="material-symbols-outlined" aria-hidden="true">support_agent</span>
-				<?php esc_html_e( 'فريق الدعم جاهز', 'digtiali-fse' ); ?>
+				<?php esc_html_e( 'فريق الدعم جاهز', 'digtiali-contact-form' ); ?>
 			</div>
-			<h1 class="dcp-hero__title"><?php esc_html_e( 'تواصل معنا،', 'digtiali-fse' ); ?><br><?php esc_html_e( 'وسنساعدك خلال ', 'digtiali-fse' ); ?><span><?php esc_html_e( 'دقائق', 'digtiali-fse' ); ?></span></h1>
-			<p class="dcp-hero__sub"><?php esc_html_e( 'فريق Digtiali جاهز للإجابة على استفساراتك المتعلقة بالمنتجات الرقمية والدعم الفني والاشتراكات.', 'digtiali-fse' ); ?></p>
+			<h1 class="dcp-hero__title"><?php esc_html_e( 'تواصل معنا،', 'digtiali-contact-form' ); ?><br><?php esc_html_e( 'وسنساعدك خلال ', 'digtiali-contact-form' ); ?><span><?php esc_html_e( 'دقائق', 'digtiali-contact-form' ); ?></span></h1>
+			<p class="dcp-hero__sub"><?php esc_html_e( 'فريق Digtiali جاهز للإجابة على استفساراتك المتعلقة بالمنتجات الرقمية والدعم الفني والاشتراكات.', 'digtiali-contact-form' ); ?></p>
 			<div class="dcp-hero__actions">
 				<a href="https://wa.me/19294462772" class="dcp-btn dcp-btn--wa" target="_blank" rel="noopener">
 					<span class="material-symbols-outlined" aria-hidden="true">chat</span>
-					<?php esc_html_e( 'تواصل عبر واتساب', 'digtiali-fse' ); ?>
+					<?php esc_html_e( 'تواصل عبر واتساب', 'digtiali-contact-form' ); ?>
 				</a>
 			</div>
 		</div>
@@ -825,8 +894,8 @@ function digtiali_contact_form_shortcode(): string {
 			<a href="https://wa.me/19294462772" class="dcp-channel-card" target="_blank" rel="noopener">
 				<div class="dcp-channel-icon" style="background:rgba(37,211,102,.15)"><span class="material-symbols-outlined" style="color:#25d366" aria-hidden="true">chat</span></div>
 				<div class="dcp-channel-title">WhatsApp Support</div>
-				<div class="dcp-channel-desc"><?php esc_html_e( 'رد سريع خلال ساعات العمل', 'digtiali-fse' ); ?></div>
-				<span class="dcp-badge dcp-badge--green"><span class="dcp-badge__dot"></span><?php esc_html_e( 'متاح الآن', 'digtiali-fse' ); ?></span>
+				<div class="dcp-channel-desc"><?php esc_html_e( 'رد سريع خلال ساعات العمل', 'digtiali-contact-form' ); ?></div>
+				<span class="dcp-badge dcp-badge--green"><span class="dcp-badge__dot"></span><?php esc_html_e( 'متاح الآن', 'digtiali-contact-form' ); ?></span>
 			</a>
 			<a href="mailto:support@digtiali.com" class="dcp-channel-card">
 				<div class="dcp-channel-icon" style="background:rgba(120,27,175,.2)"><span class="material-symbols-outlined" style="color:#9b2dd4" aria-hidden="true">mail</span></div>
@@ -837,8 +906,8 @@ function digtiali_contact_form_shortcode(): string {
 			<a href="#dcp-faq" class="dcp-channel-card">
 				<div class="dcp-channel-icon" style="background:rgba(234,179,8,.15)"><span class="material-symbols-outlined" style="color:#fbbf24" aria-hidden="true">help</span></div>
 				<div class="dcp-channel-title">FAQ Center</div>
-				<div class="dcp-channel-desc"><?php esc_html_e( 'إجابات للأسئلة الشائعة', 'digtiali-fse' ); ?></div>
-				<span class="dcp-badge dcp-badge--yellow"><?php esc_html_e( 'عرض الأسئلة', 'digtiali-fse' ); ?></span>
+				<div class="dcp-channel-desc"><?php esc_html_e( 'إجابات للأسئلة الشائعة', 'digtiali-contact-form' ); ?></div>
+				<span class="dcp-badge dcp-badge--yellow"><?php esc_html_e( 'عرض الأسئلة', 'digtiali-contact-form' ); ?></span>
 			</a>
 		</div>
 
@@ -859,25 +928,25 @@ function digtiali_contact_form_shortcode(): string {
 						<span class="material-symbols-outlined" aria-hidden="true">star</span>
 						<span class="material-symbols-outlined" aria-hidden="true">star_half</span>
 					</div>
-					<span class="dcp-brand__rating"><?php esc_html_e( '4.9/5 تقييم العملاء', 'digtiali-fse' ); ?></span>
+					<span class="dcp-brand__rating"><?php esc_html_e( '4.9/5 تقييم العملاء', 'digtiali-contact-form' ); ?></span>
 				</div>
 				<div class="dcp-brand__features">
-					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">verified</span><?php esc_html_e( 'منتجات أصلية 100%', 'digtiali-fse' ); ?></div>
-					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">bolt</span><?php esc_html_e( 'دعم سريع ومحترف', 'digtiali-fse' ); ?></div>
-					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">local_shipping</span><?php esc_html_e( 'تسليم فوري وسهل', 'digtiali-fse' ); ?></div>
-					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">inventory_2</span><?php esc_html_e( 'أكثر من 100+ منتج رقمي', 'digtiali-fse' ); ?></div>
-					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">shield</span><?php esc_html_e( 'خدمة موثوقة وأمينة', 'digtiali-fse' ); ?></div>
+					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">verified</span><?php esc_html_e( 'منتجات أصلية 100%', 'digtiali-contact-form' ); ?></div>
+					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">bolt</span><?php esc_html_e( 'دعم سريع ومحترف', 'digtiali-contact-form' ); ?></div>
+					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">local_shipping</span><?php esc_html_e( 'تسليم فوري وسهل', 'digtiali-contact-form' ); ?></div>
+					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">inventory_2</span><?php esc_html_e( 'أكثر من 100+ منتج رقمي', 'digtiali-contact-form' ); ?></div>
+					<div class="dcp-brand__feat"><span class="material-symbols-outlined" aria-hidden="true">shield</span><?php esc_html_e( 'خدمة موثوقة وأمينة', 'digtiali-contact-form' ); ?></div>
 				</div>
 				<div class="dcp-brand__customers">
 					<div class="dcp-brand__avatars">
-						<div class="dcp-brand__av">م</div>
-						<div class="dcp-brand__av">أ</div>
-						<div class="dcp-brand__av">س</div>
-						<div class="dcp-brand__av">ع</div>
+						<div class="dcp-brand__av"><?php esc_html_e( 'م', 'digtiali-contact-form' ); ?></div>
+						<div class="dcp-brand__av"><?php esc_html_e( 'أ', 'digtiali-contact-form' ); ?></div>
+						<div class="dcp-brand__av"><?php esc_html_e( 'س', 'digtiali-contact-form' ); ?></div>
+						<div class="dcp-brand__av"><?php esc_html_e( 'ع', 'digtiali-contact-form' ); ?></div>
 					</div>
 					<span>
 						<span class="material-symbols-outlined" style="font-size:.85rem;color:#f87171;vertical-align:middle" aria-hidden="true">favorite</span>
-						<?php esc_html_e( 'آلاف العملاء يثقون بنا', 'digtiali-fse' ); ?>
+						<?php esc_html_e( 'آلاف العملاء يثقون بنا', 'digtiali-contact-form' ); ?>
 					</span>
 				</div>
 			</div>
@@ -885,7 +954,7 @@ function digtiali_contact_form_shortcode(): string {
 			<div class="dcp-form-panel">
 				<h2 class="dcp-form-panel__title">
 					<span class="material-symbols-outlined" aria-hidden="true">edit_note</span>
-					<?php esc_html_e( 'أرسل لنا رسالة', 'digtiali-fse' ); ?>
+					<?php esc_html_e( 'أرسل لنا رسالة', 'digtiali-contact-form' ); ?>
 				</h2>
 				<form class="digtiali-contact-form" action="<?php echo esc_url( $ajax_url ); ?>" method="post" data-ajax-url="<?php echo esc_attr( $ajax_url ); ?>" data-nonce="<?php echo esc_attr( $nonce ); ?>" novalidate>
 					<input type="hidden" name="action" value="digtiali_contact_submit" />
@@ -893,46 +962,46 @@ function digtiali_contact_form_shortcode(): string {
 					<div class="dcp-fields-wrap">
 						<div class="dcp-form-row" style="margin-bottom:12px">
 							<div class="dcp-field">
-								<label for="digi-contact-name"><span class="material-symbols-outlined" aria-hidden="true">person</span><?php esc_html_e( 'الاسم الكامل', 'digtiali-fse' ); ?></label>
-								<input id="digi-contact-name" type="text" name="name" required placeholder="<?php esc_attr_e( 'اسمك الكامل', 'digtiali-fse' ); ?>" />
+								<label for="digi-contact-name"><span class="material-symbols-outlined" aria-hidden="true">person</span><?php esc_html_e( 'الاسم الكامل', 'digtiali-contact-form' ); ?></label>
+								<input id="digi-contact-name" type="text" name="name" required placeholder="<?php esc_attr_e( 'اسمك الكامل', 'digtiali-contact-form' ); ?>" />
 								<div class="digi-contact-form__field-error" data-error-for="name"></div>
 							</div>
 							<div class="dcp-field">
-								<label for="digi-contact-email"><span class="material-symbols-outlined" aria-hidden="true">mail</span><?php esc_html_e( 'البريد الإلكتروني', 'digtiali-fse' ); ?></label>
+								<label for="digi-contact-email"><span class="material-symbols-outlined" aria-hidden="true">mail</span><?php esc_html_e( 'البريد الإلكتروني', 'digtiali-contact-form' ); ?></label>
 								<input id="digi-contact-email" type="email" name="email" required placeholder="you@example.com" />
 								<div class="digi-contact-form__field-error" data-error-for="email"></div>
 							</div>
 						</div>
 						<div class="dcp-field" style="margin-bottom:12px">
-							<label for="digi-contact-phone"><span class="material-symbols-outlined" aria-hidden="true">phone</span><?php esc_html_e( 'رقم الهاتف', 'digtiali-fse' ); ?> <small style="font-weight:400;color:rgba(244,237,248,.38)">(<?php esc_html_e( 'اختياري', 'digtiali-fse' ); ?>)</small></label>
+							<label for="digi-contact-phone"><span class="material-symbols-outlined" aria-hidden="true">phone</span><?php esc_html_e( 'رقم الهاتف', 'digtiali-contact-form' ); ?> <small style="font-weight:400;color:rgba(244,237,248,.38)">(<?php esc_html_e( 'اختياري', 'digtiali-contact-form' ); ?>)</small></label>
 							<input id="digi-contact-phone" type="tel" name="phone" placeholder="+966..." />
 							<div class="digi-contact-form__field-error" data-error-for="phone"></div>
 						</div>
 						<div class="dcp-field" style="margin-bottom:12px">
-							<label for="digi-contact-subject"><span class="material-symbols-outlined" aria-hidden="true">category</span><?php esc_html_e( 'نوع الطلب', 'digtiali-fse' ); ?></label>
+							<label for="digi-contact-subject"><span class="material-symbols-outlined" aria-hidden="true">category</span><?php esc_html_e( 'نوع الطلب', 'digtiali-contact-form' ); ?></label>
 							<select id="digi-contact-subject" name="subject" required>
-								<option value="" disabled selected><?php esc_html_e( 'اختر نوع الطلب', 'digtiali-fse' ); ?></option>
-								<option value="استفسار عام"><?php esc_html_e( 'استفسار عام', 'digtiali-fse' ); ?></option>
-								<option value="دعم تقني"><?php esc_html_e( 'دعم تقني', 'digtiali-fse' ); ?></option>
-								<option value="مشكلة في الطلب"><?php esc_html_e( 'مشكلة في الطلب', 'digtiali-fse' ); ?></option>
-								<option value="الاشتراكات والتجديد"><?php esc_html_e( 'الاشتراكات والتجديد', 'digtiali-fse' ); ?></option>
-								<option value="أخرى"><?php esc_html_e( 'أخرى', 'digtiali-fse' ); ?></option>
+								<option value="" disabled selected><?php esc_html_e( 'اختر نوع الطلب', 'digtiali-contact-form' ); ?></option>
+								<option value="استفسار عام"><?php esc_html_e( 'استفسار عام', 'digtiali-contact-form' ); ?></option>
+								<option value="دعم تقني"><?php esc_html_e( 'دعم تقني', 'digtiali-contact-form' ); ?></option>
+								<option value="مشكلة في الطلب"><?php esc_html_e( 'مشكلة في الطلب', 'digtiali-contact-form' ); ?></option>
+								<option value="الاشتراكات والتجديد"><?php esc_html_e( 'الاشتراكات والتجديد', 'digtiali-contact-form' ); ?></option>
+								<option value="أخرى"><?php esc_html_e( 'أخرى', 'digtiali-contact-form' ); ?></option>
 							</select>
 							<div class="digi-contact-form__field-error" data-error-for="subject"></div>
 						</div>
 						<div class="dcp-field" style="margin-bottom:12px">
-							<label for="digi-contact-message"><span class="material-symbols-outlined" aria-hidden="true">edit</span><?php esc_html_e( 'رسالتك', 'digtiali-fse' ); ?></label>
-							<textarea id="digi-contact-message" name="message" required placeholder="<?php esc_attr_e( 'رسالتك...', 'digtiali-fse' ); ?>"></textarea>
+							<label for="digi-contact-message"><span class="material-symbols-outlined" aria-hidden="true">edit</span><?php esc_html_e( 'رسالتك', 'digtiali-contact-form' ); ?></label>
+							<textarea id="digi-contact-message" name="message" required placeholder="<?php esc_attr_e( 'رسالتك...', 'digtiali-contact-form' ); ?>"></textarea>
 							<div class="digi-contact-form__field-error" data-error-for="message"></div>
 						</div>
 						<div class="digi-contact-form__errors" aria-live="polite"></div>
 						<button type="submit" class="dcp-form-submit digi-contact-form__submit">
 							<span class="material-symbols-outlined" aria-hidden="true">send</span>
-							<?php esc_html_e( 'إرسال الرسالة', 'digtiali-fse' ); ?>
+							<?php esc_html_e( 'إرسال الرسالة', 'digtiali-contact-form' ); ?>
 						</button>
 						<div class="dcp-form-privacy" style="margin-top:10px">
 							<span class="material-symbols-outlined" aria-hidden="true">lock</span>
-							<?php esc_html_e( 'معلوماتك آمنة ولن نشاركها مع أي طرف ثالث', 'digtiali-fse' ); ?>
+							<?php esc_html_e( 'معلوماتك آمنة ولن نشاركها مع أي طرف ثالث', 'digtiali-contact-form' ); ?>
 						</div>
 					</div>
 					<div class="digi-contact-form__success" hidden aria-live="polite"></div>
@@ -944,31 +1013,31 @@ function digtiali_contact_form_shortcode(): string {
 
 		<!-- FAQ -->
 		<div class="dcp-section" id="dcp-faq">
-			<div class="dcp-section__hd"><h2 class="dcp-section__title"><?php esc_html_e( 'الأسئلة الشائعة', 'digtiali-fse' ); ?></h2></div>
+			<div class="dcp-section__hd"><h2 class="dcp-section__title"><?php esc_html_e( 'الأسئلة الشائعة', 'digtiali-contact-form' ); ?></h2></div>
 			<div class="dcp-faq-grid">
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">sync</span><?php esc_html_e( 'كيف أجدد الاشتراك بعد انتهائه؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'يمكنك تجديد اشتراكك من خلال صفحة "اشتراكاتي" في حسابك أو بالتواصل معنا مباشرة عبر واتساب.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">sync</span><?php esc_html_e( 'كيف أجدد الاشتراك بعد انتهائه؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'يمكنك تجديد اشتراكك من خلال صفحة "اشتراكاتي" في حسابك أو بالتواصل معنا مباشرة عبر واتساب.', 'digtiali-contact-form' ); ?></div>
 				</details>
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><?php esc_html_e( 'كيف أستلم المنتج بعد الشراء؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'يُرسَل المنتج فوراً إلى بريدك الإلكتروني بعد تأكيد الدفع، ويمكنك أيضاً الوصول إليه من حسابك.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">check_circle</span><?php esc_html_e( 'كيف أستلم المنتج بعد الشراء؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'يُرسَل المنتج فوراً إلى بريدك الإلكتروني بعد تأكيد الدفع، ويمكنك أيضاً الوصول إليه من حسابك.', 'digtiali-contact-form' ); ?></div>
 				</details>
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">calendar_month</span><?php esc_html_e( 'كم مدة تفعيل المنتجات؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'تُفعَّل معظم المنتجات فور إتمام عملية الدفع. في حالات نادرة قد تستغرق حتى 24 ساعة.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">calendar_month</span><?php esc_html_e( 'كم مدة تفعيل المنتجات؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'تُفعَّل معظم المنتجات فور إتمام عملية الدفع. في حالات نادرة قد تستغرق حتى 24 ساعة.', 'digtiali-contact-form' ); ?></div>
 				</details>
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">security</span><?php esc_html_e( 'هل التراخيص أصلية وآمنة؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'نعم، جميع تراخيصنا أصلية 100% ومرخصة مباشرة من الشركات المطورة.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">security</span><?php esc_html_e( 'هل التراخيص أصلية وآمنة؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'نعم، جميع تراخيصنا أصلية 100% ومرخصة مباشرة من الشركات المطورة.', 'digtiali-contact-form' ); ?></div>
 				</details>
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">replay</span><?php esc_html_e( 'هل يوجد استرجاع أو استبدال؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'نعم، نوفر سياسة استرجاع واضحة. يرجى مراجعة صفحة سياسة الاسترداد للتفاصيل الكاملة.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">replay</span><?php esc_html_e( 'هل يوجد استرجاع أو استبدال؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'نعم، نوفر سياسة استرجاع واضحة. يرجى مراجعة صفحة سياسة الاسترداد للتفاصيل الكاملة.', 'digtiali-contact-form' ); ?></div>
 				</details>
 				<details class="dcp-faq-item">
-					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">headphones</span><?php esc_html_e( 'هل نقدم دعم بعد الشراء؟', 'digtiali-fse' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
-					<div class="dcp-faq-a"><?php esc_html_e( 'بالتأكيد! نقدم دعماً كاملاً بعد الشراء عبر واتساب والبريد الإلكتروني وتذاكر الدعم.', 'digtiali-fse' ); ?></div>
+					<summary class="dcp-faq-q"><span class="dcp-faq-q-text"><span class="material-symbols-outlined" aria-hidden="true">headphones</span><?php esc_html_e( 'هل نقدم دعم بعد الشراء؟', 'digtiali-contact-form' ); ?></span><span class="material-symbols-outlined dcp-faq-chevron" aria-hidden="true">expand_more</span></summary>
+					<div class="dcp-faq-a"><?php esc_html_e( 'بالتأكيد! نقدم دعماً كاملاً بعد الشراء عبر واتساب والبريد الإلكتروني وتذاكر الدعم.', 'digtiali-contact-form' ); ?></div>
 				</details>
 			</div>
 		</div>
@@ -979,12 +1048,12 @@ function digtiali_contact_form_shortcode(): string {
 				<div class="dcp-cta-inner">
 					<div class="dcp-cta-ico"><span class="material-symbols-outlined" aria-hidden="true">support_agent</span></div>
 					<div class="dcp-cta-body">
-						<h2 class="dcp-cta-title"><?php esc_html_e( 'هل تحتاج مساعدة فورية؟', 'digtiali-fse' ); ?></h2>
-						<p class="dcp-cta-sub"><?php esc_html_e( 'تحدث مع فريق Digtiali الآن عبر واتساب وسنساعدك في اختيار المنتج المناسب.', 'digtiali-fse' ); ?></p>
+						<h2 class="dcp-cta-title"><?php esc_html_e( 'هل تحتاج مساعدة فورية؟', 'digtiali-contact-form' ); ?></h2>
+						<p class="dcp-cta-sub"><?php esc_html_e( 'تحدث مع فريق Digtiali الآن عبر واتساب وسنساعدك في اختيار المنتج المناسب.', 'digtiali-contact-form' ); ?></p>
 					</div>
 					<a href="https://wa.me/19294462772" class="dcp-btn dcp-btn--wa" target="_blank" rel="noopener">
 						<span class="material-symbols-outlined" aria-hidden="true">chat</span>
-						<?php esc_html_e( 'إبدأ المحادثة الآن', 'digtiali-fse' ); ?>
+						<?php esc_html_e( 'إبدأ المحادثة الآن', 'digtiali-contact-form' ); ?>
 					</a>
 				</div>
 			</div>
@@ -997,7 +1066,7 @@ function digtiali_contact_form_shortcode(): string {
 
 function digtiali_contact_submit_ajax(): void {
 	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'digtiali_contact_nonce' ) ) {
-		wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-fse' ) ), 403 );
+		wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-contact-form' ) ), 403 );
 	}
 	$name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
 	$email = sanitize_email( wp_unslash( $_POST['email'] ?? '' ) );
@@ -1005,17 +1074,17 @@ function digtiali_contact_submit_ajax(): void {
 	$subject = sanitize_text_field( wp_unslash( $_POST['subject'] ?? '' ) );
 	$message = sanitize_textarea_field( wp_unslash( $_POST['message'] ?? '' ) );
 	$errors = array();
-	if ( '' === $name ) { $errors['name'] = __( 'Name is required.', 'digtiali-fse' ); }
-	if ( ! is_email( $email ) ) { $errors['email'] = __( 'Valid email is required.', 'digtiali-fse' ); }
+	if ( '' === $name ) { $errors['name'] = __( 'Name is required.', 'digtiali-contact-form' ); }
+	if ( ! is_email( $email ) ) { $errors['email'] = __( 'Valid email is required.', 'digtiali-contact-form' ); }
 	// phone is optional
-	if ( '' === $subject ) { $errors['subject'] = __( 'Subject is required.', 'digtiali-fse' ); }
-	if ( '' === $message ) { $errors['message'] = __( 'Message is required.', 'digtiali-fse' ); }
+	if ( '' === $subject ) { $errors['subject'] = __( 'Subject is required.', 'digtiali-contact-form' ); }
+	if ( '' === $message ) { $errors['message'] = __( 'Message is required.', 'digtiali-contact-form' ); }
 	if ( $errors ) {
-		wp_send_json_error( array( 'message' => __( 'Please fix the errors and try again.', 'digtiali-fse' ), 'errors' => $errors ), 400 );
+		wp_send_json_error( array( 'message' => __( 'Please fix the errors and try again.', 'digtiali-contact-form' ), 'errors' => $errors ), 400 );
 	}
 	$recent = new WP_Query( array( 'post_type' => 'contact_submission', 'post_status' => array( 'unread', 'read', 'replied' ), 'posts_per_page' => 1, 'date_query' => array( array( 'after' => gmdate( 'Y-m-d H:i:s', time() - 600 ) ) ), 'meta_query' => array( array( 'key' => '_cs_email', 'value' => $email ), array( 'key' => '_cs_subject', 'value' => $subject ) ), 'fields' => 'ids', 'no_found_rows' => true ) );
 	if ( ! empty( $recent->posts ) ) {
-		wp_send_json_error( array( 'message' => __( 'Duplicate submission detected. Please wait 10 minutes before resubmitting the same subject.', 'digtiali-fse' ) ), 409 );
+		wp_send_json_error( array( 'message' => __( 'Duplicate submission detected. Please wait 10 minutes before resubmitting the same subject.', 'digtiali-contact-form' ) ), 409 );
 	}
 	$post_id = wp_insert_post( array( 'post_type' => 'contact_submission', 'post_status' => 'unread', 'post_title' => $name ), true );
 	if ( is_wp_error( $post_id ) ) {
@@ -1026,33 +1095,33 @@ function digtiali_contact_submit_ajax(): void {
 	update_post_meta( $post_id, '_cs_subject', $subject );
 	update_post_meta( $post_id, '_cs_message', $message );
 	update_post_meta( $post_id, '_cs_ip', sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' ) );
-	wp_send_json_success( array( 'message' => __( 'تم إرسال رسالتك بنجاح، سنرد عليك قريباً', 'digtiali-fse' ) ) );
+	wp_send_json_success( array( 'message' => __( 'تم إرسال رسالتك بنجاح، سنرد عليك قريباً', 'digtiali-contact-form' ) ) );
 }
 
 function digtiali_contact_reply_ajax(): void {
-	if ( ! digtiali_contact_user_can_manage() ) { wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'digtiali-fse' ) ), 403 ); }
-	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'digtiali_reply_nonce' ) ) { wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-fse' ) ), 403 ); }
+	if ( ! digtiali_contact_user_can_manage() ) { wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'digtiali-contact-form' ) ), 403 ); }
+	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'digtiali_reply_nonce' ) ) { wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-contact-form' ) ), 403 ); }
 	$post_id = absint( $_POST['submission_id'] ?? 0 );
 	$reply = sanitize_textarea_field( wp_unslash( $_POST['reply'] ?? '' ) );
 	$post = get_post( $post_id );
-	if ( ! $post || 'contact_submission' !== $post->post_type ) { wp_send_json_error( array( 'message' => __( 'Submission not found.', 'digtiali-fse' ) ), 404 ); }
-	if ( '' === $reply ) { wp_send_json_error( array( 'message' => __( 'Reply text is required.', 'digtiali-fse' ) ), 400 ); }
+	if ( ! $post || 'contact_submission' !== $post->post_type ) { wp_send_json_error( array( 'message' => __( 'Submission not found.', 'digtiali-contact-form' ) ), 404 ); }
+	if ( '' === $reply ) { wp_send_json_error( array( 'message' => __( 'Reply text is required.', 'digtiali-contact-form' ) ), 400 ); }
 	$email = (string) get_post_meta( $post_id, '_cs_email', true );
 	$subject = (string) get_post_meta( $post_id, '_cs_subject', true );
 	$headers = array( 'Content-Type: text/html; charset=UTF-8', 'From: ' . get_bloginfo( 'name' ) . ' <' . get_option( 'admin_email' ) . '>', 'Reply-To: ' . get_option( 'admin_email' ) );
-	if ( ! wp_mail( $email, 'Re: ' . $subject, nl2br( esc_html( $reply ) ), $headers ) ) { wp_send_json_error( array( 'message' => __( 'Email could not be sent.', 'digtiali-fse' ) ), 500 ); }
+	if ( ! wp_mail( $email, 'Re: ' . $subject, nl2br( esc_html( $reply ) ), $headers ) ) { wp_send_json_error( array( 'message' => __( 'Email could not be sent.', 'digtiali-contact-form' ) ), 500 ); }
 	update_post_meta( $post_id, '_cs_reply', $reply );
 	update_post_meta( $post_id, '_cs_replied_at', time() );
 	wp_update_post( array( 'ID' => $post_id, 'post_status' => 'replied' ) );
-	wp_send_json_success( array( 'message' => __( 'Reply sent.', 'digtiali-fse' ) ) );
+	wp_send_json_success( array( 'message' => __( 'Reply sent.', 'digtiali-contact-form' ) ) );
 }
 
 function digtiali_contact_mark_read_ajax(): void {
-	if ( ! digtiali_contact_user_can_manage() ) { wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'digtiali-fse' ) ), 403 ); }
-	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'digtiali_mark_read_nonce' ) ) { wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-fse' ) ), 403 ); }
+	if ( ! digtiali_contact_user_can_manage() ) { wp_send_json_error( array( 'message' => __( 'Unauthorized.', 'digtiali-contact-form' ) ), 403 ); }
+	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'digtiali_mark_read_nonce' ) ) { wp_send_json_error( array( 'message' => __( 'Invalid request.', 'digtiali-contact-form' ) ), 403 ); }
 	$post_id = absint( $_POST['submission_id'] ?? 0 );
 	$post = get_post( $post_id );
-	if ( ! $post || 'contact_submission' !== $post->post_type ) { wp_send_json_error( array( 'message' => __( 'Submission not found.', 'digtiali-fse' ) ), 404 ); }
+	if ( ! $post || 'contact_submission' !== $post->post_type ) { wp_send_json_error( array( 'message' => __( 'Submission not found.', 'digtiali-contact-form' ) ), 404 ); }
 	wp_update_post( array( 'ID' => $post_id, 'post_status' => 'read' ) );
-	wp_send_json_success( array( 'message' => __( 'Marked as read.', 'digtiali-fse' ) ) );
+	wp_send_json_success( array( 'message' => __( 'Marked as read.', 'digtiali-contact-form' ) ) );
 }
