@@ -1,15 +1,22 @@
 {
     "slug": "digtiali-contact-form",
     "name": "Digtiali Contact Form",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "requires_php": "7.4",
     "requires_wp": "6.0",
-    "released": "2026-07-18",
+    "released": "2026-07-19",
     "commit": "",
     "repository": "https://github.com/muhammedaslan34/digtiali-contact-form",
     "manifest_url": "https://raw.githubusercontent.com/muhammedaslan34/digtiali-contact-form/main/version.json",
     "download_url": "",
     "changelog": [
+        {
+            "version": "1.0.1",
+            "date": "2026-07-19",
+            "changes": [
+                "Add Update now button to install plugin updates from GitHub"
+            ]
+        },
         {
             "version": "1.0.0",
             "date": "2026-07-18",

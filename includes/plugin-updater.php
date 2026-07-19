@@ -321,6 +321,277 @@ function digtiali_contact_form_normalize_changelog(array $manifest): array {
 	return $normalized;
 }
 
+/**
+ * Download GitHub main-branch zipball to a local temp .zip path.
+ *
+ * @return string|\WP_Error Absolute path to .zip on success.
+ */
+function digtiali_contact_form_download_github_zipball() {
+	$token   = digtiali_contact_form_github_update_token();
+	$api_url = sprintf(
+		'https://api.github.com/repos/%s/zipball/main',
+		digtiali_contact_form_github_repo_slug()
+	);
+
+	$tmp = wp_tempnam( 'digtiali-contact-form-update-' );
+	if ( ! is_string( $tmp ) || $tmp === '' ) {
+		return new WP_Error(
+			'digtiali_contact_form_temp',
+			__( 'Could not create a temporary file for the plugin download.', 'digtiali-contact-form' )
+		);
+	}
+
+	$headers = array(
+		'Accept'     => 'application/vnd.github+json',
+		'User-Agent' => 'Digtiali-WordPress-Plugin-Updater',
+	);
+	if ( $token !== '' ) {
+		$headers['Authorization'] = 'Bearer ' . $token;
+	}
+
+	$response = wp_remote_get(
+		$api_url,
+		array(
+			'timeout'     => 300,
+			'headers'     => $headers,
+			'stream'      => true,
+			'filename'    => $tmp,
+			'redirection' => 5,
+			'sslverify'   => true,
+		)
+	);
+
+	if ( is_wp_error( $response ) ) {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- cleanup best-effort.
+		@unlink( $tmp );
+		return $response;
+	}
+
+	$code = (int) wp_remote_retrieve_response_code( $response );
+	if ( $code < 200 || $code >= 300 ) {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@unlink( $tmp );
+		if ( ( 401 === $code || 403 === $code || 404 === $code ) && $token === '' ) {
+			return new WP_Error(
+				'digtiali_contact_form_github_auth',
+				__( 'GitHub blocked the download. Add DIGTIALI_GITHUB_UPDATE_TOKEN to wp-config.php for this private repo.', 'digtiali-contact-form' )
+			);
+		}
+		return new WP_Error(
+			'digtiali_contact_form_github_http',
+			sprintf(
+				/* translators: %d: HTTP status code */
+				__( 'GitHub zipball download failed (HTTP %d).', 'digtiali-contact-form' ),
+				$code
+			)
+		);
+	}
+
+	if ( ! is_readable( $tmp ) || (int) filesize( $tmp ) < 1000 ) {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@unlink( $tmp );
+		return new WP_Error(
+			'digtiali_contact_form_empty_zip',
+			__( 'Downloaded plugin package is empty or unreadable.', 'digtiali-contact-form' )
+		);
+	}
+
+	$zip = $tmp . '.zip';
+	// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	if ( ! @rename( $tmp, $zip ) ) {
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@unlink( $tmp );
+		return new WP_Error(
+			'digtiali_contact_form_rename_zip',
+			__( 'Could not prepare the downloaded zip package.', 'digtiali-contact-form' )
+		);
+	}
+
+	return $zip;
+}
+
+/**
+ * Rename GitHub zipball folder (owner-repo-sha/) to the plugin directory slug.
+ *
+ * @param string      $source        Extracted source path.
+ * @param string      $remote_source Parent extraction directory.
+ * @param WP_Upgrader $upgrader      Upgrader instance.
+ * @param array       $hook_extra    Extra hook data.
+ * @return string|\WP_Error
+ */
+function digtiali_contact_form_upgrader_source_selection( $source, $remote_source, $upgrader, $hook_extra = array() ) {
+	unset( $hook_extra );
+
+	if ( empty( $GLOBALS['digtiali_contact_form_plugin_updating'] ) || ! $upgrader instanceof Plugin_Upgrader ) {
+		return $source;
+	}
+
+	global $wp_filesystem;
+	if ( ! $wp_filesystem instanceof WP_Filesystem_Base ) {
+		return new WP_Error(
+			'digtiali_contact_form_fs',
+			__( 'WordPress filesystem is not available.', 'digtiali-contact-form' )
+		);
+	}
+
+	$slug      = 'digtiali-contact-form';
+	$corrected = trailingslashit( $remote_source ) . $slug;
+
+	if ( trailingslashit( (string) $source ) === trailingslashit( $corrected ) ) {
+		return $source;
+	}
+
+	if ( $wp_filesystem->is_dir( $corrected ) ) {
+		return trailingslashit( $corrected );
+	}
+
+	if ( ! $wp_filesystem->move( $source, $corrected ) ) {
+		return new WP_Error(
+			'digtiali_contact_form_rename_plugin',
+			__( 'Could not rename the GitHub zipball folder to the plugin slug.', 'digtiali-contact-form' )
+		);
+	}
+
+	return trailingslashit( $corrected );
+}
+
+/**
+ * Install/overwrite this plugin from the GitHub main zipball.
+ *
+ * @return true|\WP_Error
+ */
+function digtiali_contact_form_install_plugin_from_github() {
+	if ( ! current_user_can( 'update_plugins' ) ) {
+		return new WP_Error(
+			'digtiali_contact_form_cap',
+			__( 'You do not have permission to update plugins.', 'digtiali-contact-form' )
+		);
+	}
+
+	$status = digtiali_contact_form_get_update_status( true );
+	if ( empty( $status['update_available'] ) || empty( $status['remote'] ) ) {
+		return new WP_Error(
+			'digtiali_contact_form_no_update',
+			__( 'No plugin update is available.', 'digtiali-contact-form' )
+		);
+	}
+
+	if ( ! function_exists( 'request_filesystem_credentials' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+	}
+	require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+	require_once ABSPATH . 'wp-admin/includes/misc.php';
+	require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+	ob_start();
+	$creds = request_filesystem_credentials( '', '', false, false, null );
+	ob_end_clean();
+
+	if ( false === $creds ) {
+		$ready = WP_Filesystem();
+	} else {
+		$ready = WP_Filesystem( $creds );
+	}
+
+	if ( ! $ready ) {
+		return new WP_Error(
+			'digtiali_contact_form_fs_init',
+			__( 'Could not initialize the WordPress filesystem to install the plugin.', 'digtiali-contact-form' )
+		);
+	}
+
+	$zip = digtiali_contact_form_download_github_zipball();
+	if ( is_wp_error( $zip ) ) {
+		return $zip;
+	}
+
+	$GLOBALS['digtiali_contact_form_plugin_updating'] = true;
+	add_filter( 'upgrader_source_selection', 'digtiali_contact_form_upgrader_source_selection', 10, 4 );
+
+	$skin     = new Automatic_Upgrader_Skin();
+	$upgrader = new Plugin_Upgrader( $skin );
+	$result   = $upgrader->install(
+		$zip,
+		array(
+			'clear_update_cache' => true,
+			'overwrite_package'  => true,
+		)
+	);
+
+	remove_filter( 'upgrader_source_selection', 'digtiali_contact_form_upgrader_source_selection', 10 );
+	unset( $GLOBALS['digtiali_contact_form_plugin_updating'] );
+
+	// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	@unlink( $zip );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+	if ( true !== $result ) {
+		$messages = method_exists( $skin, 'get_upgrade_messages' ) ? $skin->get_upgrade_messages() : array();
+		$detail   = is_array( $messages ) && $messages !== array()
+			? implode( ' ', array_map( 'wp_strip_all_tags', $messages ) )
+			: __( 'Plugin installation failed.', 'digtiali-contact-form' );
+		return new WP_Error( 'digtiali_contact_form_install_failed', $detail );
+	}
+
+	delete_transient( DIGTIALI_CONTACT_FORM_VERSION_TRANSIENT );
+	delete_transient( DIGTIALI_CONTACT_FORM_VERSION_ERROR_TRANSIENT );
+	wp_clean_plugins_cache( true );
+
+	// Keep the plugin active after overwrite install.
+	$plugin_file = plugin_basename( DIGTIALI_CONTACT_FORM_PATH . 'digtiali-contact-form.php' );
+	if ( ! is_plugin_active( $plugin_file ) ) {
+		activate_plugin( $plugin_file, '', false, true );
+	}
+
+	return true;
+}
+
+/**
+ * Handle Update now form POST before the admin page renders.
+ */
+function digtiali_contact_form_maybe_handle_plugin_update_request(): void {
+	if ( ! is_admin() || ! isset( $_POST['digtiali_contact_form_do_update'] ) ) {
+		return;
+	}
+
+	if ( ! current_user_can( 'update_plugins' ) ) {
+		wp_die( esc_html__( 'You do not have permission to update plugins.', 'digtiali-contact-form' ) );
+	}
+
+	check_admin_referer( 'digtiali_contact_form_do_update' );
+
+	$result = digtiali_contact_form_install_plugin_from_github();
+	$url    = admin_url('admin.php?page=digtiali-contact-form-updates');
+
+	if ( is_wp_error( $result ) ) {
+		set_transient(
+			'digtiali_contact_form_update_flash',
+			array(
+				'type'    => 'error',
+				'message' => $result->get_error_message(),
+			),
+			60
+		);
+		wp_safe_redirect( $url );
+		exit;
+	}
+
+	set_transient(
+		'digtiali_contact_form_update_flash',
+		array(
+			'type'    => 'success',
+			'message' => __( 'Plugin updated successfully from GitHub.', 'digtiali-contact-form' ),
+		),
+		60
+	);
+	wp_safe_redirect( add_query_arg( 'updated', '1', $url ) );
+	exit;
+}
+add_action( 'admin_init', 'digtiali_contact_form_maybe_handle_plugin_update_request' );
+
+
 function digtiali_contact_form_render_updates_admin_page(): void {
 	if (! current_user_can('manage_options')) {
 		wp_die(esc_html__('You do not have permission to access this page.', 'digtiali-contact-form'));
@@ -334,7 +605,7 @@ function digtiali_contact_form_render_updates_admin_page(): void {
 		delete_transient(DIGTIALI_CONTACT_FORM_VERSION_ERROR_TRANSIENT);
 	}
 
-	$status      = digtiali_contact_form_get_update_status(! empty($_GET['refresh']));
+	$status      = digtiali_contact_form_get_update_status(! empty($_GET['refresh']) || ! empty($_GET['updated']));
 	$remote      = is_array($status['remote_manifest']) ? $status['remote_manifest'] : array();
 	$changelog   = digtiali_contact_form_normalize_changelog($remote !== array() ? $remote : $status['local']);
 	$repo        = (string) ($remote['repository'] ?? $status['local']['repository'] ?? '');
@@ -342,10 +613,22 @@ function digtiali_contact_form_render_updates_admin_page(): void {
 		admin_url('admin.php?page=digtiali-contact-form-updates&refresh=1'),
 		'digtiali_contact_form_refresh_version'
 	);
+	$flash = get_transient( 'digtiali_contact_form_update_flash' );
+	if ( is_array( $flash ) ) {
+		delete_transient( 'digtiali_contact_form_update_flash' );
+	}
+	$can_update = current_user_can( 'update_plugins' );
+
 	?>
 	<div class="wrap digi-contact-form-updates">
 		<h1><?php esc_html_e('Digtiali Contact Form — Updates', 'digtiali-contact-form'); ?></h1>
 
+
+		<?php if ( is_array( $flash ) && ! empty( $flash['message'] ) ) : ?>
+			<div class="notice notice-<?php echo 'success' === ( $flash['type'] ?? '' ) ? 'success' : 'error'; ?> is-dismissible digi-contact-form-updates__notice">
+				<p><?php echo esc_html( (string) $flash['message'] ); ?></p>
+			</div>
+		<?php endif; ?>
 		<?php if (! empty($status['fetch_error'])) : ?>
 			<div class="notice notice-error inline digi-contact-form-updates__notice">
 				<p><strong><?php esc_html_e('Could not load remote version.json', 'digtiali-contact-form'); ?></strong></p>
@@ -416,14 +699,30 @@ function digtiali_contact_form_render_updates_admin_page(): void {
 						</tr>
 					</tbody>
 				</table>
-				<p>
-					<a class="button button-primary" href="<?php echo esc_url($refresh_url); ?>"><?php esc_html_e('Check for updates now', 'digtiali-contact-form'); ?></a>
+				<p class="digi-contact-form-updates__actions">
+					<?php if ( ! empty( $status['update_available'] ) && $can_update ) : ?>
+						<form method="post" action="" style="display:inline;">
+							<?php wp_nonce_field( 'digtiali_contact_form_do_update' ); ?>
+							<button type="submit" name="digtiali_contact_form_do_update" value="1" class="button button-primary button-hero">
+								<?php
+								printf(
+									/* translators: %s: remote plugin version */
+									esc_html__( 'Update to %s now', 'digtiali-contact-form' ),
+									esc_html( (string) $status['remote'] )
+								);
+								?>
+							</button>
+						</form>
+					<?php elseif ( ! empty( $status['update_available'] ) && ! $can_update ) : ?>
+						<span class="description"><?php esc_html_e( 'An update is available, but your user cannot install plugins (needs update_plugins capability).', 'digtiali-contact-form' ); ?></span>
+					<?php endif; ?>
+					<a class="button<?php echo empty( $status['update_available'] ) ? ' button-primary' : ''; ?>" href="<?php echo esc_url( $refresh_url ); ?>"><?php esc_html_e( 'Check for updates now', 'digtiali-contact-form' ); ?></a>
 				</p>
 			</div>
 
 			<div class="card">
-				<h2><?php esc_html_e('Deploy on live server (git pull)', 'digtiali-contact-form'); ?></h2>
-				<p><?php esc_html_e('After you push a new version to GitHub, run on the server:', 'digtiali-contact-form'); ?></p>
+				<h2><?php esc_html_e('How to deploy', 'digtiali-contact-form'); ?></h2>
+				<p><?php esc_html_e('Recommended: use “Update to … now” above. Or deploy manually on the server with git:', 'digtiali-contact-form'); ?></p>
 				<pre class="digi-contact-form-updates__code">cd /var/www/digtialistore-9odr.1wp.site/wp-content/plugins/digtiali-contact-form
 git pull origin main</pre>
 				<?php if ($repo !== '') : ?>
@@ -458,7 +757,7 @@ git pull origin main</pre>
 			<ol>
 				<li><?php esc_html_e('Bump the version with: php scripts/bump-version.php X.Y.Z "Your change summary"', 'digtiali-contact-form'); ?></li>
 				<li><?php esc_html_e('Commit and push to GitHub (main branch).', 'digtiali-contact-form'); ?></li>
-				<li><?php esc_html_e('On the live server: git pull origin main', 'digtiali-contact-form'); ?></li>
+				<li><?php esc_html_e('On production: open Updates and click “Update to … now” (or git pull).', 'digtiali-contact-form'); ?></li>
 				<li><?php echo esc_html(sprintf(__('Open %s and click “Check for updates now”.', 'digtiali-contact-form'), 'Contact Submissions → Updates')); ?></li>
 			</ol>
 		</div>
@@ -472,6 +771,8 @@ git pull origin main</pre>
 		.digi-contact-form-updates__badge--warn { background: #fef3c7; color: #92400e; }
 		.digi-contact-form-updates__code { direction: ltr; text-align: left; background: #1e1e1e; color: #d4d4d4; padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
 		.digi-contact-form-updates__changelog ul { margin-top: 0; }
+		.digi-contact-form-updates__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
 	</style>
 	<?php
 }
