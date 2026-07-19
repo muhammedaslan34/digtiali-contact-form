@@ -65,7 +65,7 @@ if (! is_string($encoded)) {
 file_put_contents($manifestPath, $encoded . "\n");
 
 $plugin = (string) file_get_contents($pluginPath);
-$plugin = preg_replace('/(\* Version:\s+)\d+\.\d+\.\d+/', '$1' . $newVersion, $plugin, 1, $countHeader);
+$plugin = preg_replace('/(\* Version:\s+)\d+\.\d+\.\d+/', '${1}' . $newVersion, $plugin, 1, $countHeader);
 if ($countHeader === 0) {
 	fwrite(STDERR, "Could not update plugin header Version line.\n");
 	exit(1);
@@ -73,7 +73,7 @@ if ($countHeader === 0) {
 
 $plugin = preg_replace(
 	"/(\\\$fallback = ')[^']+(';\\s*\\/\\/ digtiali-contact-form version fallback)/",
-	'$1' . $newVersion . '$2',
+	'${1}' . $newVersion . '${2}',
 	$plugin,
 	1,
 	$countFallback
