@@ -81,6 +81,23 @@ $plugin = preg_replace(
 
 file_put_contents($pluginPath, $plugin);
 
+// Guard: '$1' . '1.x.y' becomes '$11.x.y' and preg_replace treats $11 as a
+// backreference — use ${1}/${2} above and verify the written file is valid PHP.
+if (! preg_match('/\* Version:\s*' . preg_quote($newVersion, '/') . '\b/', $plugin)) {
+	fwrite(STDERR, "Refusing to finish: plugin header Version is not {$newVersion}.\n");
+	exit(1);
+}
+if (strpos($plugin, "\$fallback = '{$newVersion}'") === false && strpos($plugin, "\$fallback='{$newVersion}'") === false) {
+	fwrite(STDERR, "Refusing to finish: \$fallback version is not {$newVersion}.\n");
+	exit(1);
+}
+exec('php -l ' . escapeshellarg($pluginPath) . ' 2>&1', $lintOut, $lintCode);
+if ($lintCode !== 0) {
+	fwrite(STDERR, "Refusing to finish: php -l failed on {$pluginPath}\n");
+	fwrite(STDERR, implode("\n", $lintOut) . "\n");
+	exit(1);
+}
+
 echo "Bumped digtiali-contact-form {$oldVersion} -> {$newVersion}\n";
 echo "Updated: version.json, digtiali-contact-form.php\n";
 echo "Next: git add version.json digtiali-contact-form.php && git commit && git push\n";

@@ -1,7 +1,7 @@
 {
     "slug": "digtiali-contact-form",
     "name": "Digtiali Contact Form",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "requires_php": "7.4",
     "requires_wp": "6.0",
     "released": "2026-07-19",
@@ -10,6 +10,13 @@
     "manifest_url": "https://raw.githubusercontent.com/muhammedaslan34/digtiali-contact-form/main/version.json",
     "download_url": "",
     "changelog": [
+        {
+            "version": "1.0.2",
+            "date": "2026-07-19",
+            "changes": [
+                "Harden version bump script so releases starting with 1 cannot corrupt the plugin header"
+            ]
+        },
         {
             "version": "1.0.1",
             "date": "2026-07-19",

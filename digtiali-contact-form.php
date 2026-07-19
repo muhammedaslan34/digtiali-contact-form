@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Digtiali Contact Form
  * Description: Custom contact form with admin submissions and reply handling.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Digtiali
  * Author URI: https://digtiali.com
  * Text Domain: digtiali-contact-form
@@ -20,7 +20,7 @@ define( 'DIGTIALI_CONTACT_FORM_URL', plugin_dir_url( __FILE__ ) );
  * Installed version — read from version.json when present.
  */
 function digtiali_contact_form_read_installed_version(): string {
-	$fallback = '1.0.1'; // digtiali-contact-form version fallback
+	$fallback = '1.0.2'; // digtiali-contact-form version fallback
 	$path     = __DIR__ . '/version.json';
 	if ( ! is_readable( $path ) ) {
 		return $fallback;
