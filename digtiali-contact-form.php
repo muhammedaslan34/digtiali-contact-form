@@ -4,6 +4,7 @@
  * Description: Custom contact form with admin submissions and reply handling.
  * Version: 1.0.1
  * Author: Digtiali
+ * Author URI: https://digtiali.com
  * Text Domain: digtiali-contact-form
  * Requires PHP: 7.4
  */
